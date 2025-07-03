@@ -159,6 +159,31 @@
         .bank-info strong {
             color: #1e40af;
         }
+        /* Loading spinner styles */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1001;
+        }
+        .spinner {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3b82f6;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -166,7 +191,8 @@
         <h1 class="text-3xl font-bold text-center text-gray-800 mb-8">하계수련원 식권 구매 선결제 주문서</h1>
 
         <!-- HTML form with action and method attributes -->
-        <form id="orderForm" action="https://script.google.com/macros/s/AKfycbwV2iNPVA6ITfXrR1tzjPf09t3l-YiAqWNyRawiOiRiqO53bOlEZDwikY9D73jcxBGz/exec" method="POST" target="hidden_iframe">
+        <!-- target="hidden_iframe" 및 <iframe> 태그 제거 -->
+        <form id="orderForm" action="https://script.google.com/macros/s/AKfycbwV2iNPVA6ITfXrR1tzjPf09t3l-YiAqWNyRawiOiRiqO53bOlEZDwikY9D73jcxBGz/exec" method="POST">
             <!-- 고객 정보 섹션 -->
             <div class="mb-8">
                 <h2 class="section-title">1. 고객 정보</h2>
@@ -250,12 +276,13 @@
             </div>
 
             <!-- 주문서 제출 버튼 -->
-            <button type="submit" class="submit-button" onclick="return submitOrder()">주문서 제출 및 결제 안내</button>
+            <button type="submit" class="submit-button">주문서 제출 및 결제 안내</button>
         </form>
+    </div>
 
-        <!-- Hidden iframe to submit form without page refresh -->
-        <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
-
+    <!-- 로딩 오버레이 -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
     </div>
 
     <!-- 모달 (결제 안내) -->
@@ -287,17 +314,25 @@
         // 페이지 로드 시 메뉴 목록 동적 생성
         document.addEventListener('DOMContentLoaded', () => {
             const menuListDiv = document.getElementById('menuList');
-            menuListDiv.innerHTML = ''; // 기존 메뉴를 지우고 새로 생성
-            menuItems.forEach((item, index) => {
-                const menuItemHtml = `
-                    <div class="menu-item">
-                        <label for="menu-${index}" class="text-gray-800 text-base font-medium">${item.name} (${item.price.toLocaleString()}원)</label>
-                        <input type="number" id="menu-${index}" name="menu-${index}" class="quantity-input" min="0" value="0" data-price="${item.price}" onchange="calculateTotal()">
-                    </div>
-                `;
-                menuListDiv.innerHTML += menuItemHtml;
-            });
+            if (menuListDiv) { // null 체크 추가
+                menuListDiv.innerHTML = ''; // 기존 메뉴를 지우고 새로 생성
+                menuItems.forEach((item, index) => {
+                    const menuItemHtml = `
+                        <div class="menu-item">
+                            <label for="menu-${index}" class="text-gray-800 text-base font-medium">${item.name} (${item.price.toLocaleString()}원)</label>
+                            <input type="number" id="menu-${index}" name="menu-${index}" class="quantity-input" min="0" value="0" data-price="${item.price}" onchange="calculateTotal()">
+                        </div>
+                    `;
+                    menuListDiv.innerHTML += menuItemHtml;
+                });
+            }
             calculateTotal(); // 초기 총 금액 계산
+
+            // 폼 제출 이벤트 리스너 추가
+            const orderForm = document.getElementById('orderForm');
+            if (orderForm) { // null 체크 추가
+                orderForm.addEventListener('submit', submitOrder);
+            }
         });
 
         // 총 금액 계산 함수
@@ -305,76 +340,141 @@
             let total = 0;
             menuItems.forEach((item, index) => {
                 const quantityInput = document.getElementById(`menu-${index}`);
-                const quantity = parseInt(quantityInput.value);
-                if (!isNaN(quantity) && quantity > 0) {
-                    total += quantity * item.price;
+                if (quantityInput) { // 요소가 존재하는지 확인
+                    const quantity = parseInt(quantityInput.value);
+                    if (!isNaN(quantity) && quantity > 0) {
+                        total += quantity * item.price;
+                    }
                 }
             });
-            document.getElementById('totalAmountDisplay').innerText = total.toLocaleString();
-            document.getElementById('totalAmount').value = total; // Hidden input에 값 업데이트
+            const totalAmountDisplay = document.getElementById('totalAmountDisplay');
+            const totalAmountInput = document.getElementById('totalAmount');
+
+            if (totalAmountDisplay) { // null 체크 추가
+                totalAmountDisplay.innerText = total.toLocaleString();
+            }
+            if (totalAmountInput) { // null 체크 추가
+                totalAmountInput.value = total; // Hidden input에 값 업데이트
+            }
         }
 
-        // 주문서 제출 함수 (form submit을 직접 처리)
-        function submitOrder() {
+        // 주문서 제출 함수 (fetch API 사용)
+        async function submitOrder(event) {
+            event.preventDefault(); // 기본 폼 제출 동작 방지
+
             // 필수 입력 필드 유효성 검사
-            const customerName = document.getElementById('customerName').value;
-            const customerTel = document.getElementById('customerTel').value;
-            const customerDepartment = document.getElementById('customerDepartment').value;
-            const checkInDate = document.getElementById('checkInDate').value;
-            const checkOutDate = document.getElementById('checkOutDate').value;
-            const adultPeople = parseInt(document.getElementById('adultPeople').value);
-            const childPeople = parseInt(document.getElementById('childPeople').value);
-            const agreeTerms = document.getElementById('agreeTerms').checked;
+            const customerName = document.getElementById('customerName');
+            const customerTel = document.getElementById('customerTel');
+            const customerDepartment = document.getElementById('customerDepartment');
+            const checkInDate = document.getElementById('checkInDate');
+            const checkOutDate = document.getElementById('checkOutDate');
+            const adultPeople = document.getElementById('adultPeople');
+            const childPeople = document.getElementById('childPeople');
+            const agreeTerms = document.getElementById('agreeTerms');
 
-            if (!customerName || !customerTel || !customerDepartment || !checkInDate || !checkOutDate || isNaN(adultPeople) || isNaN(childPeople) || !agreeTerms) {
+            // 모든 요소가 존재하는지 먼저 확인
+            if (!customerName || !customerTel || !customerDepartment || !checkInDate || !checkOutDate || !adultPeople || !childPeople || !agreeTerms) {
+                alert('폼을 처리하는 데 필요한 일부 요소가 누락되었습니다. 페이지를 새로고침하거나 개발자에게 문의하세요.');
+                console.error('Missing required form elements for validation.');
+                return;
+            }
+
+            if (!customerName.value || !customerTel.value || !customerDepartment.value || !checkInDate.value || !checkOutDate.value || isNaN(parseInt(adultPeople.value)) || isNaN(parseInt(childPeople.value)) || !agreeTerms.checked) {
                 alert('모든 필수 정보를 입력하고 이용 약관에 동의해주세요.');
-                return false; // 폼 제출 방지
+                return;
             }
 
-            if (adultPeople === 0 && childPeople === 0) {
+            const adultCount = parseInt(adultPeople.value);
+            const childCount = parseInt(childPeople.value);
+
+            if (adultCount === 0 && childCount === 0) {
                 alert('수련원 이용인원을 1명 이상 입력해주세요 (성인 또는 36개월 미만).');
-                return false; // 폼 제출 방지
+                return;
             }
 
-            const inDate = new Date(checkInDate);
-            const outDate = new Date(checkOutDate);
+            const inDate = new Date(checkInDate.value);
+            const outDate = new Date(checkOutDate.value);
             if (outDate < inDate) {
                 alert('퇴실일은 입실일보다 빠를 수 없습니다.');
-                return false; // 폼 제출 방지
+                return;
             }
 
             let hasSelectedMenu = false;
             menuItems.forEach((item, index) => {
                 const quantityInput = document.getElementById(`menu-${index}`);
-                if (parseInt(quantityInput.value) > 0) {
+                if (quantityInput && parseInt(quantityInput.value) > 0) {
                     hasSelectedMenu = true;
                 }
             });
 
             if (!hasSelectedMenu) {
                 alert('최소 한 개 이상의 식권을 선택해주세요.');
-                return false; // 폼 제출 방지
+                return;
             }
 
-            // 모든 유효성 검사를 통과하면 폼을 제출하고 모달을 표시
-            document.getElementById('orderForm').submit();
+            // 로딩 오버레이 표시
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) {
+                loadingOverlay.style.display = 'flex';
+            }
 
-            const totalAmount = document.getElementById('totalAmount').value; // Hidden input에서 값 가져오기
-            document.getElementById('modalTotalAmount').innerText = parseInt(totalAmount).toLocaleString(); // 모달에 금액 표시
-            document.getElementById('paymentModal').style.display = 'flex'; // 모달 표시
+            const form = event.target;
+            const formData = new FormData(form);
+            const url = form.action; // 폼의 action 속성에서 Apps Script URL 가져오기
 
-            return true; // 폼 제출 허용
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (response.ok) {
+                    const resultText = await response.text();
+                    if (resultText === "Success") {
+                        const totalAmountInput = document.getElementById('totalAmount');
+                        const modalTotalAmount = document.getElementById('modalTotalAmount');
+                        const paymentModal = document.getElementById('paymentModal');
+
+                        if (totalAmountInput && modalTotalAmount && paymentModal) {
+                            const totalAmount = totalAmountInput.value;
+                            modalTotalAmount.innerText = parseInt(totalAmount).toLocaleString();
+                            paymentModal.style.display = 'flex'; // 모달 표시
+                            form.reset(); // 폼 초기화 (선택 사항)
+                            calculateTotal(); // 폼 초기화 후 총 금액도 0으로 업데이트
+                        } else {
+                            console.error("필수 DOM 요소가 없습니다: totalAmountInput, modalTotalAmount, paymentModal");
+                            alert('주문서 제출에 실패했습니다. (UI 요소 누락)');
+                        }
+                    } else {
+                        alert('주문서 제출에 실패했습니다. 다시 시도해주세요. (Apps Script 응답 오류)');
+                        console.error('Apps Script 응답 오류:', resultText);
+                    }
+                } else {
+                    alert('주문서 제출에 실패했습니다. 서버 응답 오류: ' + response.status);
+                    console.error('Fetch 오류:', response.status, response.statusText);
+                }
+            } catch (error) {
+                alert('주문서 제출 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.');
+                console.error('Fetch 에러:', error);
+            } finally {
+                if (loadingOverlay) {
+                    loadingOverlay.style.display = 'none';
+                }
+            }
         }
 
         // 모달 닫기 함수
         function closeModal() {
-            document.getElementById('paymentModal').style.display = 'none';
+            const paymentModal = document.getElementById('paymentModal');
+            if (paymentModal) {
+                paymentModal.style.display = 'none';
+            }
         }
 
         // 모달 외부 클릭 시 닫기
         window.onclick = function(event) {
             const modal = document.getElementById('paymentModal');
-            if (event.target == modal) {
+            if (modal && event.target == modal) {
                 modal.style.display = 'none';
             }
         }
